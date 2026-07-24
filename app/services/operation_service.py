@@ -7,13 +7,13 @@ from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import OperationAlreadyExists
+from app.core.exceptions import OperationAlreadyExists, OperationNotFound
 from app.models import Operation, OperationEvent, OperationStatus
 from app.schemas.operations import CreateOperationRequest, OperationResponse
 
 
 class OperationService:
-    """Создание платёжных операций"""
+    """Создание и чтение платёжных операций"""
 
     def __init__(self, session: AsyncSession) -> None:
         """Сохраняет сессию БД для работы сервиса"""
@@ -47,4 +47,11 @@ class OperationService:
         self._session.add(event)
         await self._session.commit()
         await self._session.refresh(operation)
+        return cast(OperationResponse, OperationResponse.model_validate(operation))
+
+    async def get(self, operation_id: str) -> OperationResponse:
+        """Возвращает текущее состояние операции по идентификатору"""
+        operation = await self._session.get(Operation, operation_id)
+        if operation is None:
+            raise OperationNotFound(operation_id)
         return cast(OperationResponse, OperationResponse.model_validate(operation))

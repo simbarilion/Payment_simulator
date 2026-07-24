@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from starlette.status import HTTP_409_CONFLICT
+from starlette.status import HTTP_404_NOT_FOUND, HTTP_409_CONFLICT
 
 
 class AppError(Exception):
@@ -32,4 +32,16 @@ class OperationAlreadyExists(AppError):
             message=f"Operation '{operation_id}' already exists",
             status_code=HTTP_409_CONFLICT,
             code="operation_already_exists",
+        )
+
+
+class OperationNotFound(AppError):
+    """Ошибка отсутствия операции с указанным operationId (HTTP 404)"""
+
+    def __init__(self, operation_id: str) -> None:
+        """Формирует ответ для несуществующей операции"""
+        super().__init__(
+            message=f"Operation '{operation_id}' not found",
+            status_code=HTTP_404_NOT_FOUND,
+            code="operation_not_found",
         )
