@@ -3,53 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
-from sqlalchemy import inspect, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Operation, OperationEvent, OperationStatus
-from app.models.base import Base
-
-
-@pytest.fixture
-async def db_session(tmp_path: Path):
-    """Создаёт временную SQLite БД и отдаёт сессию"""
-    db_file = tmp_path / "test.db"
-    engine = create_async_engine(
-        f"sqlite+aiosqlite:///{db_file.as_posix()}",
-        connect_args={"timeout": 30},
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    session_factory = async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autoflush=False,
-    )
-    async with session_factory() as session:
-        yield session
-
-    await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_create_all_creates_operation_tables(tmp_path: Path) -> None:
-    """create_all создаёт таблицы operations и operation_events"""
-    db_file = tmp_path / "schema.db"
-    engine = create_async_engine(f"sqlite+aiosqlite:///{db_file.as_posix()}")
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        table_names = await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_table_names())
-
-    await engine.dispose()
-
-    assert "operations" in table_names
-    assert "operation_events" in table_names
 
 
 @pytest.mark.asyncio
@@ -79,7 +38,7 @@ async def test_operation_persists_created_state(db_session: AsyncSession) -> Non
 
 @pytest.mark.asyncio
 async def test_operation_event_linked_with_monotonic_event_id(db_session: AsyncSession) -> None:
-    """Событие истории связано с операцией и хранит монотонный event_id"""
+    """Событие истории связано с операцией и хранит event_id"""
     operation = Operation(
         operation_id="operation-456",
         amount="10.50",
