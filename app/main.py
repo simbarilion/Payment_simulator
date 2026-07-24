@@ -1,6 +1,7 @@
-"""Точка входа FastAPI-приложения"""
+"""Точка входа FastAPI-приложения платёжного сервиса"""
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,15 +19,22 @@ setup_logging(settings)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("Application started")
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Управляет жизненным циклом приложения при старте и остановке"""
+    logger.info(
+        "Application started | data_dir=%s | sqlite=%s | provider_url=%s",
+        settings.data_dir,
+        settings.sqlite_path,
+        settings.provider_url,
+    )
     yield
-    await engine.dispose()  # закрывает пулл соединений с PostgreSQL при завершении работы приложения
+    await engine.dispose()
+    logger.info("Application stopped")
 
 
 app = FastAPI(
     title="Payment Service API",
-    description="",
+    description="Сервис проведения платёжных операций через внешнего провайдера",
     version="1.0.0",
     openapi_tags=[],
     openapi_url="/openapi.json",

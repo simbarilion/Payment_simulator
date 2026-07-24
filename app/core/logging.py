@@ -8,7 +8,7 @@ from app.core.config import Settings
 
 
 def setup_logging(settings: Settings) -> None:
-    """Настраивает корневой логгер: консоль и файл"""
+    """Настраивает корневой логгер: консоль и ротируемый файл"""
     log_dir = Path(settings.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
 

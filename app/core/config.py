@@ -1,3 +1,5 @@
+"""Настройки приложения из переменных окружения и файла .env"""
+
 from functools import lru_cache
 from pathlib import Path
 
@@ -30,22 +32,36 @@ class Settings(BaseSettings):
     log_file: str = "app.log"
     request_log_file: str = "requests.log"
 
-    # Database
-    db_name: str
-    db_user: str
-    db_password: str
-    db_host: str
-    db_port: int = 5432
+    # SQLite: в Docker Compose каталог монтируется как /data
+    data_dir: str = Field(
+        default="data",
+        description="Каталог постоянного хранилища SQLite",
+    )
+    sqlite_filename: str = Field(
+        default="payments.db",
+        description="Имя файла базы SQLite внутри data_dir",
+    )
 
-    provider_url: str
+    provider_url: str = Field(
+        default="http://localhost:8081",
+        description="Базовый URL внешнего provider-simulator",
+    )
+
+    @property
+    def sqlite_path(self) -> Path:
+        """Абсолютный путь к файлу базы SQLite"""
+        path = Path(self.data_dir)
+        if not path.is_absolute():
+            path = _PROJECT_ROOT / path
+        return (path / self.sqlite_filename).resolve()
 
     @property
     def database_url(self) -> str:
-        """Асинхронный URL для SQLAlchemy + asyncpg"""
-        return f"postgresql+asyncpg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        """Асинхронный URL для SQLAlchemy + aiosqlite"""
+        return f"sqlite+aiosqlite:///{self.sqlite_path.as_posix()}"
 
 
-@lru_cache  # чтобы настройки не создавались при каждом импорте
+@lru_cache
 def get_settings() -> Settings:
     """Возвращает закэшированный экземпляр настроек"""
     return Settings()

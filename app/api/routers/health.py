@@ -14,13 +14,13 @@ router = APIRouter(tags=["health"])
     "/health",
     response_model=HealthResponse,
     summary="Проверка работоспособности",
-    description="Liveness-проверка: сервис запущен и отвечает.",
+    description="Проверка готовности: сервис запущен и хранилище SQLite доступно",
     responses={200: {"description": "Сервис доступен"}},
 )
 async def health(
     session: AsyncSession = Depends(get_session),
 ) -> HealthResponse:
-    """Возвращает статус работоспособности сервиса"""
+    """Возвращает статус работоспособности сервиса и доступности БД"""
     try:
         await session.execute(text("SELECT 1"))
         return HealthResponse(status="ok")

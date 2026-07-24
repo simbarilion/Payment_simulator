@@ -1,20 +1,22 @@
-"""Хелперы асинхронного движка и сессий БД"""
+"""Хелперы асинхронного движка и сессий SQLite"""
 
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
 
 settings = get_settings()
 
+# Каталог volume должен существовать до открытия файла БД
+settings.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+
 engine = create_async_engine(
     settings.database_url,
     echo=settings.app_debug,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=20,
-    pool_timeout=30,
+    connect_args={"timeout": 30},
+    poolclass=NullPool,
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -26,6 +28,6 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Зависимость для инъекции сессии в роутеры"""
+    """Отдаёт асинхронную сессию БД для внедрения в обработчики"""
     async with AsyncSessionLocal() as session:
         yield session

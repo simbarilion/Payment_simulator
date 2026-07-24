@@ -24,9 +24,10 @@ class AppError(Exception):
 
 
 class OperationAlreadyExists(AppError):
-    """Ошибка 'Операция уже существует' (HTTP 409)"""
+    """Ошибка повторного создания операции с тем же operationId (HTTP 409)"""
 
-    def __init__(self, operation_id: str):
+    def __init__(self, operation_id: str) -> None:
+        """Формирует конфликт для уже существующей операции"""
         super().__init__(
             message=f"Operation '{operation_id}' already exists",
             status_code=HTTP_409_CONFLICT,
