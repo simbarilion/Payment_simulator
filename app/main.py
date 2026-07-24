@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import RequestIdMiddleware
+from app.db.init_db import init_db
 from app.db.session import engine
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ setup_logging(settings)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Управляет жизненным циклом приложения при старте и остановке"""
+    await init_db()
     logger.info(
         "Application started | data_dir=%s | sqlite=%s | provider_url=%s",
         settings.data_dir,
