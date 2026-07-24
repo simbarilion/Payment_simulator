@@ -5,7 +5,7 @@ description = "Service that processes a payment transaction through an external 
 authors = [
     {name = "simbarilion",email = "nadezhda13popova@gmail.com"}
 ]
-requires-python = "^3.14"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     "fastapi (>=0.139.2,<0.140.0)",
     "uvicorn (>=0.51.0,<0.52.0)",
