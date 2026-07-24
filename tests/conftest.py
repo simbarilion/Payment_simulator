@@ -4,9 +4,12 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import Connection
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.db.dependencies import get_session
+from app.main import app
 from app.models import Base
 
 
@@ -36,3 +39,17 @@ async def db_session(tmp_path: Path) -> AsyncIterator[AsyncSession]:
         yield session
 
     await engine.dispose()
+
+
+@pytest.fixture
+async def client(db_session: AsyncSession):
+    """HTTP-клиент с подменой сессии БД на тестовую"""
+
+    async def override_session():
+        yield db_session
+
+    app.dependency_overrides[get_session] = override_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as http:
+        yield http
+    app.dependency_overrides.clear()
