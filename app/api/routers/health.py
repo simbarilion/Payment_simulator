@@ -15,7 +15,10 @@ router = APIRouter(tags=["health"])
     response_model=HealthResponse,
     summary="Проверка работоспособности",
     description="Проверка готовности: сервис запущен и хранилище SQLite доступно",
-    responses={200: {"description": "Сервис доступен"}},
+    responses={
+        200: {"description": "Сервис доступен"},
+        503: {"description": "Хранилище недоступно"},
+    },
 )
 async def health(
     session: AsyncSession = Depends(get_session),
