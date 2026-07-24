@@ -27,7 +27,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_db()
 
     http = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0))
-    provider_client = ProviderClient(base_url=settings.provider_url, http=http)
+    provider_client = ProviderClient(
+        base_url=settings.provider_url,
+        http=http,
+        max_attempts=settings.provider_max_attempts,
+        retry_base_delay_seconds=settings.provider_retry_base_delay_seconds,
+    )
     app.state.http_client = http
     app.state.provider_client = provider_client
 

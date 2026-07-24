@@ -42,9 +42,20 @@ class Settings(BaseSettings):
         description="Имя файла базы SQLite внутри data_dir",
     )
 
+    # Provider
     provider_url: str = Field(
         default="http://localhost:8081",
         description="Базовый URL внешнего provider-simulator",
+    )
+    provider_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        description="Максимум попыток вызова провайдера при 503 и сетевых ошибках",
+    )
+    provider_retry_base_delay_seconds: float = Field(
+        default=0.2,
+        ge=0.0,
+        description="Базовая задержка перед повтором вызова провайдера (секунды)",
     )
 
     @property
