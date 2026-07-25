@@ -2,7 +2,7 @@
 
 Сервис проводит платёжную операцию через внешний `provider-simulator` и сохраняет корректное состояние при повторах, конкурентных запросах, потерянных HTTP-ответах и перезапусках.
 
-Финальный статус операции (`COMPLETED` / `REJECTED`) определяется **только** callback-квитанцией на `POST /receipts`. Ответ `202 Accepted` от провайдера лишь сохраняет `providerPaymentId` и не завершает платёж.
+Финальный статус операции (`COMPLETED` / `REJECTED`) определяется **только** callback-квитанцией на `POST /receipts`. Ответ `202 Accepted` от провайдера сохраняет `providerPaymentId` и не завершает платёж.
 
 ## Требования
 
@@ -11,35 +11,20 @@
 
 ## Запуск приложения (Docker Compose)
 
-Из корня репозитория:
+1. Клонировать репозиторий и перейти в корень проекта:
 
 ```bash
-docker compose up --build
+git clone https://github.com/simbarilion/Payment_simulator.git
+cd Payment_simulator
 ```
 
-Сервисы:
-
-| Сервис | URL |
-|--------|-----|
-| candidate-service | http://localhost:8080 |
-| provider-simulator | http://localhost:8081 |
-| OpenAPI (candidate) | http://localhost:8080/docs |
-
-Данные SQLite хранятся в volume `candidate-data` → `/data/payments.db` и переживают recreate контейнера (пока volume не удалён).
-
-Остановка:
+2. Собрать образы и поднять оба сервиса:
 
 ```bash
-docker compose down
+docker compose -f docker-compose.yaml up --build
 ```
 
-Удаление volume (сброс данных):
-
-```bash
-docker compose down -v
-```
-
-## Проверка готовности
+3. Дождаться готовности приложения, в другом терминале вызвать healthcheck:
 
 ```bash
 curl -s http://localhost:8080/health
@@ -47,9 +32,47 @@ curl -s http://localhost:8080/health
 
 Ожидается `{"status":"ok"}`.
 
+Сервисы после старта:
+
+| Сервис | URL |
+|--------|-----|
+| candidate-service | http://localhost:8080 |
+| provider-simulator | http://localhost:8081 |
+| OpenAPI (candidate) | http://localhost:8080/docs |
+
+### Постоянное хранение данных
+
+Сервис использует SQLite в качестве постоянного хранилища.
+
+В `docker-compose.yaml` каталог `/data` внутри контейнера смонтирован в именованный Docker volume `candidate-data`. Файл базы данных `payments.db` (имя задаётся переменной `SQLITE_FILENAME`) создаётся внутри этого каталога.
+
+Благодаря использованию Docker volume данные сохраняются между перезапусками и пересозданием контейнера. 
+
+В базе данных хранятся операции, история переходов состояний (`OperationEvent`) и связь операции с платежом провайдера (`providerPaymentId`).
+
+Данные сохраняются, пока не будет удалён Docker volume `candidate-data`. Полный сброс БД: 
+
+`docker compose -f docker-compose.yaml down -v` (флаг `-v` удаляет volume `candidate-data`).
+
+Остановка контейнеров без удаления данных:
+
+```bash
+docker compose -f docker-compose.yaml down
+```
+
 ## Сквозной сценарий
 
-Подставьте уникальный `operationId` при каждом прогоне.
+Ниже приведён минимальный сценарий ручной проверки сервиса после запуска. 
+
+Он демонстрирует полный жизненный цикл операции: создание, отправку провайдеру, обработку callback-квитанции и просмотр истории событий.
+
+### `operationId`
+
+Сервис не генерирует `operationId`: его передаёт клиент в соответствии с контрактом задания.
+
+В реальных платёжных системах идентификатор обычно создаётся внешней системой (например, сервисом заказов) и используется как ключ идемпотентности.
+
+В примерах ниже используется `operation-demo-1`. При повторном запуске сценария без очистки БД используйте новый идентификатор.
 
 ### 1. Создать операцию
 
@@ -61,7 +84,7 @@ curl -s -X POST http://localhost:8080/operations \
 
 Ожидается **201**, `"status":"CREATED"`, `"providerPaymentId":null`.
 
-Повтор с тем же `operationId` вызывает исключение со статусом **409**.
+Повтор с тем же `operationId` -> **409**.
 
 ### 2. Надёжно запланировать отправку
 
@@ -69,8 +92,8 @@ curl -s -X POST http://localhost:8080/operations \
 curl -s -i -X POST http://localhost:8080/operations/operation-demo-1/submit
 ```
 
-Первый вызов возвращает **202**, `"status":"PROCESSING"`.  
-Повторный вызов возвращает **200** и то же состояние (второе намерение и второй платёж у провайдера не создаются).
+Первый вызов -> **202**, `"status":"PROCESSING"`.  
+Повторный -> **200** и то же состояние (второе намерение и второй платёж у провайдера не создаются).
 
 Сервис вызывает:
 
@@ -79,7 +102,7 @@ curl -s -i -X POST http://localhost:8080/operations/operation-demo-1/submit
 
 ### 3. Дождаться callback-квитанции
 
-Симулятор сам шлёт `POST http://candidate-service:8080/receipts` с `result: COMPLETED` или `REJECTED`.
+Симулятор сам шлёт `POST http://candidate-service:8080/receipts` с `result: COMPLETED` или `REJECTED` (в пределах 1–2 секунд).
 
 Проверить состояние:
 
@@ -99,8 +122,8 @@ curl -s http://localhost:8080/operations/operation-demo-1/events
 
 ## Идемпотентность и один платёж на операцию
 
-- Все повторы одной операции используют **один и тот же** `Idempotency-Key` (равен `operationId`) и неизменное тело платежа.
-- Параллельные / повторные `submit` не создают второе намерение: ровно один переход от `CREATED` к `PROCESSING`.
+- Все попытки отправки одной операции используют один и тот же `Idempotency-Key` (= `operationId`) и неизменное тело запроса.
+- Параллельные / повторные `submit` не создают второе намерение: ровно один переход `CREATED` → `PROCESSING`.
 - После сетевой ошибки или потери ответа операция остаётся `PROCESSING`; recovery при старте снова вызывает провайдера с тем же ключом.
 - Провайдер при том же ключе возвращает тот же `providerPaymentId` и не создаёт новый платёж.
 - Автопроверка сверяет внутренний аудит провайдера: на одну операцию — не более одного платежа.
@@ -116,30 +139,173 @@ curl -s http://localhost:8080/operations/operation-demo-1/events
 | GET | `/operations/{id}` | 200 |
 | GET | `/operations/{id}/events` | 200 |
 
-## Локальный запуск (без Docker)
+## Локальный запуск приложения
+
+В этом режиме `candidate-service` запускается локально через Uvicorn, а `provider-simulator` — в Docker Compose.
+
+1. Клонировать репозиторий и перейти в корневую директорию проекта:
+
+```bash
+git clone https://github.com/simbarilion/Payment_simulator.git
+cd Payment_simulator
+```
+
+2. Запустить `provider-simulator`. Порт `8081` должен быть свободен.
+
+```bash
+docker compose -f docker-compose.yaml up provider-simulator
+```
+
+3. Создать файл окружения:
 
 ```bash
 cp .env.example .env
+```
+
+По умолчанию используются следующие значения:
+
+- `PROVIDER_URL=http://localhost:8081` — адрес `provider-simulator`;
+- `DATA_DIR=data` — каталог для хранения файла SQLite;
+- `SQLITE_FILENAME=payments.db` — имя файла базы данных.
+
+4. Установить зависимости и запустить приложение:
+
+```bash
 poetry install
 poetry run uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-Нужен доступный `PROVIDER_URL` (по умолчанию `http://localhost:8081`). Симулятор удобнее поднимать через Compose.
+5. Проверить доступность сервиса:
 
-Тесты:
+```bash
+curl -s http://localhost:8080/health
+```
+
+6. Запуск тестов (опционально):
 
 ```bash
 poetry install --with test
 poetry run pytest
 ```
 
+**Примечание**
+
+При локальном запуске callback-квитанции от `provider-simulator` могут быть недоступны, 
+поскольку в Docker Compose используется адрес `http://candidate-service:8080/receipts`, который разрешается только внутри Docker-сети.
+
+Для проверки полного сценария (создание операции -> submit -> callback -> финальный статус) 
+рекомендуется запускать оба сервиса через Docker Compose.
+
+
 ## Переменные окружения
 
-Создай `.env` по примеру `.env.example`. 
+При локальном запуске настройки загружаются из файла `.env`.
 
-В docker-compose.yaml для candidate задаются как минимум:
+Для запуска через Docker Compose переменные окружения определены непосредственно в `docker-compose.yaml`.
 
-- `PROVIDER_URL=http://provider-simulator:8081`
-- `DATA_DIR=/data`
+Ниже приведены параметры, используемые сервисом.
 
-У симулятора: `CALLBACK_URL=http://candidate-service:8080/receipts`.
+| Переменная | Значение в Compose | Назначение                                              |
+|------------|--------------------|---------------------------------------------------------|
+| `PROVIDER_URL` | `http://provider-simulator:8081` | Адрес внешнего provider-simulator внутри Docker-сети    |
+| `DATA_DIR` | `/data` | Каталог постоянного хранения данных                     |
+| `SQLITE_FILENAME` | `payments.db` | Имя файла базы данных SQLite                            |
+| `APP_HOST` / `APP_PORT` | `0.0.0.0` / `8080` | Хост, на котором слушает FastAPI, порт приложения       |
+| `PROVIDER_MAX_ATTEMPTS` | `3` | Максимальное число повторов вызова провайдера           |
+| `PROVIDER_RETRY_BASE_DELAY_SECONDS` | `0.2` | Начальная задержка между повторными попытками (backoff) |
+
+В качестве постоянного хранилища используется SQLite. Файл базы данных располагается в Docker volume `candidate-data`, 
+благодаря чему данные сохраняются после перезапуска или пересоздания контейнера.
+
+### provider-simulator
+
+| Переменная | Значение | Назначение |
+|------------|----------|--------|
+| `CALLBACK_URL` | `http://candidate-service:8080/receipts` | Адрес callback-эндпоинта, на который симулятор отправляет результат обработки платежа |
+
+После успешного принятия платежа симулятор выполняет HTTP-запрос на `CALLBACK_URL`, передавая финальный результат (`COMPLETED` или `REJECTED`).
+Именно эта квитанция завершает жизненный цикл операции.
+
+## Структура проекта
+
+app/
+├── api/
+│   ├── routers/
+│   └── dependencies.py
+│   └── router.py
+│
+├── services/
+│   ├── operation_service.py
+│   ├── receipt_service.py
+│   └── provider_service.py
+│
+├── repositories/
+│
+├── workers/
+│
+├── models/
+│
+├── schemas/
+│
+├── db/
+│
+└── main.py
+
+### Ответственность слоёв
+
+- **Routers** принимают HTTP-запросы и преобразуют их в вызовы сервисов.
+- **Services** реализуют бизнес-логику приложения.
+- **Repositories** инкапсулируют работу с SQLite через SQLAlchemy.
+- **ProviderClient** отвечает за HTTP-взаимодействие с `provider-simulator`.
+- **Workers** выполняют фоновую обработку (dispatch и recovery).
+
+## Архитектура
+
+```text
+    submit
+       │
+       ▼
+    ProviderClient
+       │
+       ▼
+    Provider Simulator
+       │
+    callback
+       │
+       ▼
+    /receipts
+```
+
+Краткий поток:
+
+1. Клиент создаёт операцию (`CREATED`) и вызывает `submit`.
+2. Сервис атомарно фиксирует намерение (`PROCESSING`) в SQLite и только потом вызывает провайдера.
+3. Провайдер отвечает `ACCEPTED` + `providerPaymentId` (промежуточный этап) и позже шлёт квитанцию на `/receipts`.
+4. Только квитанция переводит операцию в `COMPLETED` или `REJECTED`.
+5. При старте `RecoveryService` находит незавершённые `PROCESSING` и повторяет вызов с тем же `Idempotency-Key`.
+
+## Архитектурные решения
+
+- **SQLite вместо PostgreSQL** — соответствует условиям ТЗ, проще docker-compose, данные переживают рестарт контейнера.
+- **Клиентский `operationId`** — в соответствии с контрактом ТЗ; он же ключ идемпотентности у провайдера.
+- **Сначала сохранение в базе, затем HTTP-вызов** — операция переводится в `PROCESSING` до обращения к провайдеру. Благодаря этому после сбоя или перезапуска отправка может быть безопасно продолжена.
+- **Разделение транспортного и бизнес-результата** — успешный HTTP-ответ провайдера подтверждает только получение запроса. Операция считается завершённой только после получения callback-квитанции.
+- **Защита от повторных отправок** — только один запрос может перевести операцию из `CREATED` в `PROCESSING`. Повторные и конкурентные `submit` используют уже сохранённое состояние.
+- **Автоматическое восстановление после перезапуска** — при запуске приложения повторно обрабатываются операции, оставшиеся в состоянии `PROCESSING`.
+
+## Возможные улучшения
+
+- переход на PostgreSQL и миграции Alembic для эксплуатации под высокой нагрузкой;
+- добавление метрик и трассировки запросов по `X-Correlation-ID`;
+- расширение автоматических тестов сценариями высокой конкуренции и длительных сетевых сбоев.
+
+## Автор
+
+Выполнено в рамках тестового задания.
+
+Надежда Попова  
+Python Developer  
+
+Email: nadezhdapopova13@yandex.ru  
+
+Репозиторий: https://github.com/simbarilion/Payment_simulator
