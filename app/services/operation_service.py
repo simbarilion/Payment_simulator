@@ -69,7 +69,7 @@ class OperationService:
 
     async def submit(self, operation_id: str) -> tuple[OperationResponse, int]:
         """Надёжно планирует отправку: 202 при новом намерении, 200 при повторе"""
-        operation = await self._session.get(Operation, operation_id)
+        operation = cast(Operation | None, await self._session.get(Operation, operation_id))
         if operation is None:
             raise OperationNotFound(operation_id)
 
@@ -78,7 +78,7 @@ class OperationService:
             return await self.get(operation_id), 200
 
         if self._dispatcher is not None:
-            # Вызов провайдера после commit намерения, без удержания write-lock на HTTP
+            # Вызов провайдера после commit: write-lock снят
             await self._dispatcher.dispatch(
                 self._session,
                 operation_id=operation.operation_id,
