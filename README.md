@@ -228,38 +228,41 @@ poetry run pytest
 
 ## Структура проекта
 
-app/
-├── api/
-│   ├── routers/
-│   └── dependencies.py
-│   └── router.py
-│
-├── services/
-│   ├── operation_service.py
-│   ├── receipt_service.py
-│   └── provider_service.py
-│
-├── repositories/
-│
-├── workers/
-│
-├── models/
-│
-├── schemas/
-│
-├── db/
-│
-└── main.py
+```text
+Payment_simulator/
+├── app/
+│   ├── api/                 # HTTP-слой: роутеры, Depends, сборка api_router
+│   │   └── routers/         # health, operations, receipts
+│   ├── core/                # конфиг, исключения, handlers, логи, middleware
+│   ├── db/                  # async engine, сессии, init_db
+│   ├── models/              # ORM: Operation, OperationEvent, статусы
+│   ├── repositories/        # чтение/запись SQLite через SQLAlchemy
+│   ├── schemas/             # Pydantic-схемы запросов и ответов API
+│   ├── services/            # бизнес-логика: operations, receipts, provider, recovery
+│   ├── workers/             # фоновый dispatch вызова провайдера после submit
+│   └── main.py              # FastAPI, lifespan, httpx, старт recovery
+├── tests/                   # pytest (API, client, receipts, recovery)
+├── data/                    # локальный SQLite (runtime, в .gitignore)
+├── logs/                    # логи при локальном запуске (если включены, в .gitignore)
+├── docker-compose.yaml      # candidate-service + provider-simulator
+├── Dockerfile
+├── .env.example
+├── Makefile
+├── pyproject.toml
+└── README.md
+```
 
 ### Ответственность слоёв
 
-- **Routers** принимают HTTP-запросы и преобразуют их в вызовы сервисов.
-- **Services** реализуют бизнес-логику приложения.
-- **Repositories** инкапсулируют работу с SQLite через SQLAlchemy.
-- **ProviderClient** отвечает за HTTP-взаимодействие с `provider-simulator`.
-- **Workers** выполняют фоновую обработку (dispatch и recovery).
+- **api / routers** — принимают HTTP-запросы, валидируют вход через схемы, вызывают сервисы; без бизнес-правил и SQL.
+- **schemas** — контракт API (Pydantic): create/submit/get, receipts, health.
+- **services** — жизненный цикл операции, приём квитанций, идемпотентный `submit`, HTTP-клиент провайдера (`ProviderClient`), recovery незавершённых `PROCESSING`.
+- **repositories** — доступ к SQLite: операции, события, атомарный переход статусов `CREATED` в `PROCESSING`.
+- **models / db** — ORM-модели и инфраструктура сессий; схема создаётся при старте (`create_all`).
+- **workers** — после сохранения намерения `submit` асинхронно вызывает провайдера и сохраняет `providerPaymentId`.
+- **core** — настройки окружения, доменные ошибки, exception handlers, request-id middleware, логирование.
 
-## Архитектура
+## Архитектура проекта
 
 ```text
     submit
