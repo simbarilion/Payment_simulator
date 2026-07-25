@@ -45,3 +45,15 @@ class OperationNotFound(AppError):
             status_code=HTTP_404_NOT_FOUND,
             code="operation_not_found",
         )
+
+
+class ProviderPaymentIdConflict(AppError):
+    """Конфликт providerPaymentId после установления связи с операцией (HTTP 409)"""
+
+    def __init__(self, operation_id: str) -> None:
+        """Формирует конфликт несовпадающего providerPaymentId"""
+        super().__init__(
+            message=f"providerPaymentId does not match operation '{operation_id}'",
+            status_code=HTTP_409_CONFLICT,
+            code="provider_payment_id_conflict",
+        )

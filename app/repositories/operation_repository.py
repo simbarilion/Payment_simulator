@@ -59,3 +59,8 @@ class OperationRepository:
             select(Operation).where(Operation.status == OperationStatus.PROCESSING).order_by(Operation.created_at)
         )
         return list(result.all())
+
+    async def set_status(self, operation: Operation, status: OperationStatus) -> None:
+        """Обновляет статус операции в текущей сессии"""
+        operation.status = status
+        await self._session.flush()
