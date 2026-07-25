@@ -11,9 +11,9 @@ from app.models import Operation, OperationEvent, OperationStatus
 
 
 @pytest.mark.asyncio
-async def test_create_operation_returns_201(client: AsyncClient) -> None:
+async def test_create_operation_returns_201(client_test_db: AsyncClient) -> None:
     """POST /operations создаёт операцию в CREATED и возвращает 201"""
-    response = await client.post(
+    response = await client_test_db.post(
         "/operations",
         json={
             "operationId": "operation-123",
@@ -36,11 +36,11 @@ async def test_create_operation_returns_201(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_create_operation_persists_created_event(
-    client: AsyncClient,
+    client_test_db: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
     """При создании фиксируется событие CREATED с event_id=1"""
-    await client.post(
+    await client_test_db.post(
         "/operations",
         json={
             "operationId": "operation-evt",
@@ -70,7 +70,7 @@ async def test_create_operation_persists_created_event(
 
 
 @pytest.mark.asyncio
-async def test_create_operation_duplicate_returns_409(client: AsyncClient) -> None:
+async def test_create_operation_duplicate_returns_409(client_test_db: AsyncClient) -> None:
     """Повторное создание того же operationId возвращает 409"""
     payload = {
         "operationId": "operation-dup",
@@ -78,8 +78,8 @@ async def test_create_operation_duplicate_returns_409(client: AsyncClient) -> No
         "currency": "RUB",
         "description": "dup",
     }
-    assert (await client.post("/operations", json=payload)).status_code == 201
-    response = await client.post("/operations", json=payload)
+    assert (await client_test_db.post("/operations", json=payload)).status_code == 201
+    response = await client_test_db.post("/operations", json=payload)
     assert response.status_code == 409
 
 
@@ -88,9 +88,9 @@ async def test_create_operation_duplicate_returns_409(client: AsyncClient) -> No
     "amount",
     ["0", "0.00", "-1.00", "10.123", "abc", ""],
 )
-async def test_create_operation_rejects_invalid_amount(client: AsyncClient, amount: str) -> None:
+async def test_create_operation_rejects_invalid_amount(client_test_db: AsyncClient, amount: str) -> None:
     """Некорректный amount отклоняется валидацией"""
-    response = await client.post(
+    response = await client_test_db.post(
         "/operations",
         json={
             "operationId": f"op-bad-{amount or 'empty'}",
@@ -102,9 +102,9 @@ async def test_create_operation_rejects_invalid_amount(client: AsyncClient, amou
 
 
 @pytest.mark.asyncio
-async def test_create_operation_rejects_non_rub_currency(client: AsyncClient) -> None:
+async def test_create_operation_rejects_non_rub_currency(client_test_db: AsyncClient) -> None:
     """Валюта кроме RUB отклоняется"""
-    response = await client.post(
+    response = await client_test_db.post(
         "/operations",
         json={
             "operationId": "operation-usd",
