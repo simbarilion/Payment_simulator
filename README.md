@@ -1,4 +1,4 @@
-# Payment Simulator (candidate-service)
+# Payment Simulator
 
 Сервис проводит платёжную операцию через внешний `provider-simulator` и сохраняет корректное состояние при повторах, конкурентных запросах, потерянных HTTP-ответах и перезапусках.
 
@@ -9,7 +9,7 @@
 - Docker и Docker Compose
 - Для локального запуска без Docker: Python 3.14 и Poetry
 
-## Быстрый старт (Docker Compose)
+## Запуск приложения (Docker Compose)
 
 Из корня репозитория:
 
@@ -61,7 +61,7 @@ curl -s -X POST http://localhost:8080/operations \
 
 Ожидается **201**, `"status":"CREATED"`, `"providerPaymentId":null`.
 
-Повтор с тем же `operationId` → **409**.
+Повтор с тем же `operationId` вызывает исключение со статусом **409**.
 
 ### 2. Надёжно запланировать отправку
 
@@ -69,8 +69,8 @@ curl -s -X POST http://localhost:8080/operations \
 curl -s -i -X POST http://localhost:8080/operations/operation-demo-1/submit
 ```
 
-Первый вызов → **202**, `"status":"PROCESSING"`.  
-Повторный → **200** и то же состояние (второе намерение и второй платёж у провайдера не создаются).
+Первый вызов возвращает **202**, `"status":"PROCESSING"`.  
+Повторный вызов возвращает **200** и то же состояние (второе намерение и второй платёж у провайдера не создаются).
 
 Сервис вызывает:
 
@@ -95,15 +95,15 @@ curl -s http://localhost:8080/operations/operation-demo-1
 curl -s http://localhost:8080/operations/operation-demo-1/events
 ```
 
-Ожидается монотонный `eventId`: как минимум `CREATED` → `PROCESSING` → `COMPLETED`|`REJECTED`.
+Ожидается монотонный `eventId`: `CREATED` -> `PROCESSING` -> `COMPLETED`|`REJECTED`.
 
 ## Идемпотентность и один платёж на операцию
 
-- Все повторы одной операции используют **один и тот же** `Idempotency-Key` (= `operationId`) и неизменное тело платежа
-- Параллельные / повторные `submit` не создают второе намерение: ровно один переход `CREATED` → `PROCESSING`
-- После сетевой ошибки или потери ответа операция остаётся `PROCESSING`; recovery при старте снова вызывает провайдера с тем же ключом
-- Провайдер при том же ключе возвращает тот же `providerPaymentId` и не создаёт новый платёж
-- Автопроверка сверяет внутренний аудит провайдера: на одну операцию — не более одного платежа
+- Все повторы одной операции используют **один и тот же** `Idempotency-Key` (равен `operationId`) и неизменное тело платежа.
+- Параллельные / повторные `submit` не создают второе намерение: ровно один переход от `CREATED` к `PROCESSING`.
+- После сетевой ошибки или потери ответа операция остаётся `PROCESSING`; recovery при старте снова вызывает провайдера с тем же ключом.
+- Провайдер при том же ключе возвращает тот же `providerPaymentId` и не создаёт новый платёж.
+- Автопроверка сверяет внутренний аудит провайдера: на одну операцию — не более одного платежа.
 
 ## Обязательный API
 
@@ -135,7 +135,9 @@ poetry run pytest
 
 ## Переменные окружения
 
-См. `.env.example`. В Compose для candidate задаются как минимум:
+Создай `.env` по примеру `.env.example`. 
+
+В docker-compose.yaml для candidate задаются как минимум:
 
 - `PROVIDER_URL=http://provider-simulator:8081`
 - `DATA_DIR=/data`
