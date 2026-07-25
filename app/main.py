@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import RequestIdMiddleware
+from app.core.openapi import API_DESCRIPTION, OPENAPI_TAGS
 from app.db.init_db import init_db
 from app.db.session import AsyncSessionLocal, engine
 from app.services.provider_service import ProviderClient
@@ -65,10 +66,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="Payment Service API",
-    description="Сервис проведения платёжных операций через внешнего провайдера",
+    title="Payment Simulator API",
+    description=API_DESCRIPTION,
     version="1.0.0",
-    openapi_tags=[],
+    openapi_tags=OPENAPI_TAGS,
     openapi_url="/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",

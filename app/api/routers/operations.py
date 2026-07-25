@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import provider_client_dep
 from app.db.dependencies import get_session
+from app.schemas.errors import ErrorResponse
 from app.schemas.operations import CreateOperationRequest, OperationEventResponse, OperationResponse
 from app.services.operation_service import OperationService, build_operation_service
 from app.services.provider_service import ProviderClient
@@ -17,10 +18,17 @@ router = APIRouter(prefix="/operations", tags=["operations"])
     response_model=OperationResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Создание операции",
-    description="Создаёт платёжную операцию в статусе CREATED",
+    description=(
+        "Создаёт платёжную операцию в статусе `CREATED`. "
+        "`operationId` задаёт клиент и далее используется как Idempotency-Key у провайдера."
+    ),
     responses={
-        201: {"description": "Операция создана"},
-        409: {"description": "Операция с таким operationId уже существует"},
+        201: {"description": "Операция создана", "model": OperationResponse},
+        409: {
+            "description": "Операция с таким operationId уже существует",
+            "model": ErrorResponse,
+        },
+        422: {"description": "Ошибка валидации тела запроса"},
     },
 )
 async def create_operation(
@@ -35,10 +43,10 @@ async def create_operation(
     "/{operation_id}",
     response_model=OperationResponse,
     summary="Получение операции",
-    description="Возвращает текущее состояние платёжной операции",
+    description="Возвращает текущее состояние платёжной операции по `operationId`.",
     responses={
-        200: {"description": "Текущее состояние операции"},
-        404: {"description": "Операция не найдена"},
+        200: {"description": "Текущее состояние операции", "model": OperationResponse},
+        404: {"description": "Операция не найдена", "model": ErrorResponse},
     },
 )
 async def get_operation(
@@ -53,10 +61,13 @@ async def get_operation(
     "/{operation_id}/events",
     response_model=list[OperationEventResponse],
     summary="История переходов операции",
-    description="Возвращает события операции в порядке фиксации",
+    description=(
+        "Возвращает события операции в порядке фиксации "
+        "(`CREATED` → `PROCESSING` → `COMPLETED`|`REJECTED`, при конфликте — `RECEIPT_IGNORED`)."
+    ),
     responses={
         200: {"description": "История переходов"},
-        404: {"description": "Операция не найдена"},
+        404: {"description": "Операция не найдена", "model": ErrorResponse},
     },
 )
 async def list_operation_events(
@@ -71,11 +82,22 @@ async def list_operation_events(
     "/{operation_id}/submit",
     response_model=OperationResponse,
     summary="Отправка операции провайдеру",
-    description="Атомарно сохраняет намерение отправки и вызывает провайдера после фиксации",
+    description=(
+        "Атомарно сохраняет намерение отправки (`CREATED` → `PROCESSING`), затем вызывает "
+        "`POST {PROVIDER_URL}/payments` с `Idempotency-Key` и `X-Correlation-ID`. "
+        "Первый вызов — **202**, повторный — **200** без второго платежа. "
+        "Финальный статус приходит только через `/receipts`."
+    ),
     responses={
-        202: {"description": "Намерение отправки создано, операция в PROCESSING"},
-        200: {"description": "Повторный submit: возвращено текущее состояние"},
-        404: {"description": "Операция не найдена"},
+        202: {
+            "description": "Намерение отправки создано, операция в PROCESSING",
+            "model": OperationResponse,
+        },
+        200: {
+            "description": "Повторный submit: возвращено текущее состояние",
+            "model": OperationResponse,
+        },
+        404: {"description": "Операция не найдена", "model": ErrorResponse},
     },
 )
 async def submit_operation(

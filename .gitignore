@@ -66,3 +66,5 @@ data/
 # Test files
 # ================================
 /test_main.http
+
+/body.json

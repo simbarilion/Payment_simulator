@@ -20,12 +20,40 @@ class CreateOperationRequest(BaseModel):
     model_config = ConfigDict(
         validate_by_alias=True,
         validate_by_name=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "operationId": "operation-demo-1",
+                    "amount": "1000.00",
+                    "currency": "RUB",
+                    "description": "Оплата заказа",
+                }
+            ]
+        },
     )
 
-    operation_id: str = Field(..., alias="operationId", min_length=1)
-    amount: str
-    currency: Literal["RUB"] = "RUB"
-    description: str | None = None
+    operation_id: str = Field(
+        ...,
+        alias="operationId",
+        min_length=1,
+        description="Идентификатор операции от клиента (ключ идемпотентности)",
+        examples=["operation-demo-1"],
+    )
+    amount: str = Field(
+        ...,
+        description="Сумма: положительная десятичная строка, не более 2 знаков после точки",
+        examples=["1000.00"],
+    )
+    currency: Literal["RUB"] = Field(
+        default="RUB",
+        description="Валюта операции (в контракте задания — только RUB)",
+        examples=["RUB"],
+    )
+    description: str | None = Field(
+        default=None,
+        description="Произвольное описание платежа",
+        examples=["Оплата заказа"],
+    )
 
     @field_validator("amount")
     @classmethod
@@ -50,14 +78,60 @@ class OperationResponse(BaseModel):
         validate_by_name=True,
         serialize_by_alias=True,
         from_attributes=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "operationId": "operation-demo-1",
+                    "amount": "1000.00",
+                    "currency": "RUB",
+                    "description": "Оплата заказа",
+                    "status": "CREATED",
+                    "providerPaymentId": None,
+                },
+                {
+                    "operationId": "operation-demo-1",
+                    "amount": "1000.00",
+                    "currency": "RUB",
+                    "description": "Оплата заказа",
+                    "status": "PROCESSING",
+                    "providerPaymentId": "aa5b7856-e9f2-4fd5-955b-38b1f28d9c57",
+                },
+                {
+                    "operationId": "operation-demo-1",
+                    "amount": "1000.00",
+                    "currency": "RUB",
+                    "description": "Оплата заказа",
+                    "status": "COMPLETED",
+                    "providerPaymentId": "aa5b7856-e9f2-4fd5-955b-38b1f28d9c57",
+                },
+            ]
+        },
     )
 
-    operation_id: str = Field(..., alias="operationId")
-    amount: str
-    currency: str
-    description: str | None = None
-    status: OperationStatus
-    provider_payment_id: str | None = Field(None, alias="providerPaymentId")
+    operation_id: str = Field(
+        ...,
+        alias="operationId",
+        description="Идентификатор операции",
+        examples=["operation-demo-1"],
+    )
+    amount: str = Field(..., description="Сумма операции", examples=["1000.00"])
+    currency: str = Field(..., description="Валюта", examples=["RUB"])
+    description: str | None = Field(
+        default=None,
+        description="Описание",
+        examples=["Оплата заказа"],
+    )
+    status: OperationStatus = Field(
+        ...,
+        description="Текущий статус операции",
+        examples=["CREATED"],
+    )
+    provider_payment_id: str | None = Field(
+        default=None,
+        alias="providerPaymentId",
+        description="Идентификатор платежа у провайдера (после accept или ранней квитанции)",
+        examples=["aa5b7856-e9f2-4fd5-955b-38b1f28d9c57"],
+    )
 
 
 class OperationEventResponse(BaseModel):
@@ -68,11 +142,75 @@ class OperationEventResponse(BaseModel):
         validate_by_name=True,
         serialize_by_alias=True,
         from_attributes=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "eventId": 1,
+                    "type": "CREATED",
+                    "fromStatus": None,
+                    "toStatus": "CREATED",
+                    "message": "Operation created",
+                    "occurredAt": "2026-07-25T16:10:50.875619",
+                },
+                {
+                    "eventId": 2,
+                    "type": "PROCESSING",
+                    "fromStatus": "CREATED",
+                    "toStatus": "PROCESSING",
+                    "message": "Submit intent saved",
+                    "occurredAt": "2026-07-25T16:10:50.898539",
+                },
+                {
+                    "eventId": 3,
+                    "type": "COMPLETED",
+                    "fromStatus": "PROCESSING",
+                    "toStatus": "COMPLETED",
+                    "message": "Payment completed",
+                    "occurredAt": "2026-07-25T16:10:51.420344",
+                },
+                {
+                    "eventId": 4,
+                    "type": "RECEIPT_IGNORED",
+                    "fromStatus": "COMPLETED",
+                    "toStatus": "COMPLETED",
+                    "message": "Conflicting receipt ignored",
+                    "occurredAt": "2026-07-25T16:11:00.000000",
+                },
+            ]
+        },
     )
 
-    event_id: int = Field(..., alias="eventId")
-    type: str
-    from_status: str | None = Field(None, alias="fromStatus")
-    to_status: str | None = Field(None, alias="toStatus")
-    message: str
-    occurred_at: datetime = Field(..., alias="occurredAt")
+    event_id: int = Field(
+        ...,
+        alias="eventId",
+        description="Монотонный номер события в пределах операции",
+        examples=[1],
+    )
+    type: str = Field(
+        ...,
+        description="Тип события (статус или RECEIPT_IGNORED)",
+        examples=["PROCESSING"],
+    )
+    from_status: str | None = Field(
+        default=None,
+        alias="fromStatus",
+        description="Статус до перехода",
+        examples=["CREATED"],
+    )
+    to_status: str | None = Field(
+        default=None,
+        alias="toStatus",
+        description="Статус после перехода",
+        examples=["PROCESSING"],
+    )
+    message: str = Field(
+        ...,
+        description="Пояснение к событию",
+        examples=["Submit intent saved"],
+    )
+    occurred_at: datetime = Field(
+        ...,
+        alias="occurredAt",
+        description="Время фиксации события",
+        examples=["2026-07-25T16:10:50.898539"],
+    )
