@@ -1,6 +1,8 @@
 """Общие фикстуры тестов"""
 
-from collections.abc import AsyncIterator
+from __future__ import annotations
+
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -46,7 +48,7 @@ async def db_session(tmp_path: Path) -> AsyncIterator[AsyncSession]:
 
 @pytest.fixture
 async def client_test_db(db_session: AsyncSession):
-    """HTTP-клиент с подменой сессии БД на тестовую"""
+    """HTTP-клиент с подменой сессии БД на тестовую (без мока провайдера)"""
 
     async def override_session():
         yield db_session
@@ -84,3 +86,27 @@ async def client(db_session: AsyncSession, provider: ProviderClient):
     async with AsyncClient(transport=transport, base_url="http://test") as http:
         yield http
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def create_operation(client: AsyncClient) -> Callable[..., Awaitable[None]]:
+    """Фабрика создания операции через API для сценариев submit/events"""
+
+    async def _create(
+        operation_id: str,
+        *,
+        amount: str = "1000.00",
+        currency: str = "RUB",
+        description: str | None = "Оплата заказа",
+    ) -> None:
+        payload: dict[str, object] = {
+            "operationId": operation_id,
+            "amount": amount,
+            "currency": currency,
+        }
+        if description is not None:
+            payload["description"] = description
+        response = await client.post("/operations", json=payload)
+        assert response.status_code == 201
+
+    return _create

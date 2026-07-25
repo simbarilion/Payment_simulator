@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
@@ -57,3 +58,21 @@ class OperationResponse(BaseModel):
     description: str | None = None
     status: OperationStatus
     provider_payment_id: str | None = Field(None, alias="providerPaymentId")
+
+
+class OperationEventResponse(BaseModel):
+    """Событие перехода статуса операции в истории"""
+
+    model_config = ConfigDict(
+        validate_by_alias=True,
+        validate_by_name=True,
+        serialize_by_alias=True,
+        from_attributes=True,
+    )
+
+    event_id: int = Field(..., alias="eventId")
+    type: str
+    from_status: str | None = Field(None, alias="fromStatus")
+    to_status: str | None = Field(None, alias="toStatus")
+    message: str
+    occurred_at: datetime = Field(..., alias="occurredAt")

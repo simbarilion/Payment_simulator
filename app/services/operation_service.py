@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import OperationAlreadyExists, OperationNotFound
 from app.models import Operation, OperationEvent, OperationStatus
-from app.schemas.operations import CreateOperationRequest, OperationResponse
+from app.schemas.operations import CreateOperationRequest, OperationEventResponse, OperationResponse
 from app.services.provider_service import ProviderClient
 from app.workers.dispatcher import PaymentDispatcher
 
@@ -66,6 +66,21 @@ class OperationService:
         if operation is None:
             raise OperationNotFound(operation_id)
         return cast(OperationResponse, OperationResponse.model_validate(operation))
+
+    async def list_events(self, operation_id: str) -> list[OperationEventResponse]:
+        """Возвращает историю переходов операции в порядке фиксации"""
+        operation = await self._session.get(Operation, operation_id)
+        if operation is None:
+            raise OperationNotFound(operation_id)
+
+        events = (
+            await self._session.scalars(
+                select(OperationEvent)
+                .where(OperationEvent.operation_id == operation_id)
+                .order_by(OperationEvent.event_id)
+            )
+        ).all()
+        return [OperationEventResponse.model_validate(event) for event in events]
 
     async def submit(self, operation_id: str) -> tuple[OperationResponse, int]:
         """Надёжно планирует отправку: 202 при новом намерении, 200 при повторе"""

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import provider_client_dep
 from app.db.dependencies import get_session
-from app.schemas.operations import CreateOperationRequest, OperationResponse
+from app.schemas.operations import CreateOperationRequest, OperationEventResponse, OperationResponse
 from app.services.operation_service import OperationService, build_operation_service
 from app.services.provider_service import ProviderClient
 
@@ -47,6 +47,24 @@ async def get_operation(
 ) -> OperationResponse:
     """Возвращает операцию по id или 404, если она не существует"""
     return await OperationService(session).get(operation_id)
+
+
+@router.get(
+    "/{operation_id}/events",
+    response_model=list[OperationEventResponse],
+    summary="История переходов операции",
+    description="Возвращает события операции в порядке фиксации",
+    responses={
+        200: {"description": "История переходов"},
+        404: {"description": "Операция не найдена"},
+    },
+)
+async def list_operation_events(
+    operation_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> list[OperationEventResponse]:
+    """Возвращает историю событий операции или 404, если операции нет"""
+    return await OperationService(session).list_events(operation_id)
 
 
 @router.post(

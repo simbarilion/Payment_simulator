@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -14,28 +15,15 @@ from app.models import Operation, OperationEvent, OperationStatus
 from app.services.provider_service import ProviderClient, ProviderPaymentAccepted
 
 
-async def _create(client: AsyncClient, operation_id: str) -> None:
-    """Создаёт операцию для сценариев submit"""
-    response = await client.post(
-        "/operations",
-        json={
-            "operationId": operation_id,
-            "amount": "1000.00",
-            "currency": "RUB",
-            "description": "Оплата заказа",
-        },
-    )
-    assert response.status_code == 201
-
-
 @pytest.mark.asyncio
 async def test_first_submit_returns_202_and_calls_provider(
     client: AsyncClient,
     provider: ProviderClient,
     db_session: AsyncSession,
+    create_operation: Callable[..., Awaitable[None]],
 ) -> None:
     """Первый submit сохраняет намерение, возвращает 202 и вызывает провайдера"""
-    await _create(client, "operation-submit")
+    await create_operation("operation-submit")
 
     response = await client.post("/operations/operation-submit/submit")
 
@@ -68,9 +56,10 @@ async def test_first_submit_returns_202_and_calls_provider(
 async def test_repeat_submit_returns_200_without_second_provider_call(
     client: AsyncClient,
     provider: ProviderClient,
+    create_operation: Callable[..., Awaitable[None]],
 ) -> None:
     """Повторный submit возвращает 200 и не создаёт второе намерение/вызов"""
-    await _create(client, "operation-repeat")
+    await create_operation("operation-repeat")
     first = await client.post("/operations/operation-repeat/submit")
     assert first.status_code == 202
 
@@ -93,10 +82,11 @@ async def test_provider_failure_keeps_processing(
     client: AsyncClient,
     provider: ProviderClient,
     db_session: AsyncSession,
+    create_operation: Callable[..., Awaitable[None]],
 ) -> None:
     """Сбой провайдера после ретраев оставляет операцию в PROCESSING"""
     provider.create_payment_with_retries = AsyncMock(side_effect=httpx.ConnectError("network down"))
-    await _create(client, "operation-fail")
+    await create_operation("operation-fail")
 
     response = await client.post("/operations/operation-fail/submit")
 
