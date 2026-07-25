@@ -9,7 +9,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import Connection
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.api.dependencies import provider_client_dep
 from app.db.dependencies import get_session
@@ -24,8 +29,8 @@ def _create_all(connection: Connection) -> None:
 
 
 @pytest.fixture
-async def db_session(tmp_path: Path) -> AsyncIterator[AsyncSession]:
-    """Создаёт временную SQLite БД и отдаёт сессию"""
+async def db_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
+    """Создаёт временный async-движок SQLite со схемой"""
     db_file = tmp_path / "test.db"
     engine = create_async_engine(
         f"sqlite+aiosqlite:///{db_file.as_posix()}",
@@ -33,17 +38,28 @@ async def db_session(tmp_path: Path) -> AsyncIterator[AsyncSession]:
     )
     async with engine.begin() as conn:
         await conn.run_sync(_create_all)
+    yield engine
+    await engine.dispose()
 
-    session_factory = async_sessionmaker(
-        bind=engine,
+
+@pytest.fixture
+def session_factory(db_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    """Фабрика сессий на тестовом движке"""
+    return async_sessionmaker(
+        bind=db_engine,
         class_=AsyncSession,
         expire_on_commit=False,
         autoflush=False,
     )
+
+
+@pytest.fixture
+async def db_session(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncSession]:
+    """Отдаёт сессию тестовой БД"""
     async with session_factory() as session:
         yield session
-
-    await engine.dispose()
 
 
 @pytest.fixture
