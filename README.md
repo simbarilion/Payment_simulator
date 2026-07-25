@@ -240,10 +240,10 @@ Payment_simulator/
 │   ├── schemas/             # Pydantic-схемы запросов и ответов API
 │   ├── services/            # бизнес-логика: operations, receipts, provider, recovery
 │   ├── workers/             # фоновый dispatch вызова провайдера после submit
-│   └── main.py              # FastAPI, lifespan, httpx, старт recovery
+│   └── main.py              # FastAPI, lifespan, httpx, старт RecoveryService
 ├── tests/                   # pytest (API, client, receipts, recovery)
-├── data/                    # локальный SQLite (runtime, в .gitignore)
-├── logs/                    # логи при локальном запуске (если включены, в .gitignore)
+├── data/                    # runtime: локальный SQLite (не исходный код, в .gitignore)
+├── logs/                    # runtime: логи при запуске (появляются сами, в .gitignore)
 ├── docker-compose.yaml      # candidate-service + provider-simulator
 ├── Dockerfile
 ├── .env.example
@@ -256,27 +256,32 @@ Payment_simulator/
 
 - **api / routers** — принимают HTTP-запросы, валидируют вход через схемы, вызывают сервисы; без бизнес-правил и SQL.
 - **schemas** — контракт API (Pydantic): create/submit/get, receipts, health.
-- **services** — жизненный цикл операции, приём квитанций, идемпотентный `submit`, HTTP-клиент провайдера (`ProviderClient`), recovery незавершённых `PROCESSING`.
+- **services** — жизненный цикл операции, приём квитанций, идемпотентный `submit`, HTTP-клиент провайдера (`ProviderClient`), `RecoveryService` для незавершённых `PROCESSING`.
 - **repositories** — доступ к SQLite: операции, события, атомарный переход статусов `CREATED` в `PROCESSING`.
 - **models / db** — ORM-модели и инфраструктура сессий; схема создаётся при старте (`create_all`).
-- **workers** — после сохранения намерения `submit` асинхронно вызывает провайдера и сохраняет `providerPaymentId`.
+- **workers** — после сохранения намерения `submit` асинхронно вызывает провайдера и сохраняет `providerPaymentId` (не recovery).
 - **core** — настройки окружения, доменные ошибки, exception handlers, request-id middleware, логирование.
 
 ## Архитектура проекта
 
 ```text
-    submit
-       │
-       ▼
-    ProviderClient
-       │
-       ▼
-    Provider Simulator
-       │
-    callback
-       │
-       ▼
-    /receipts
+Клиент
+   │
+   ▼
+candidate-service
+   │
+   ├──► SQLite
+   │
+   ▼
+ProviderClient
+   │
+   ▼
+provider-simulator
+   │
+callback
+   │
+   ▼
+/receipts ──► SQLite
 ```
 
 Краткий поток:
@@ -285,7 +290,7 @@ Payment_simulator/
 2. Сервис атомарно фиксирует намерение (`PROCESSING`) в SQLite и только потом вызывает провайдера.
 3. Провайдер отвечает `ACCEPTED` + `providerPaymentId` (промежуточный этап) и позже шлёт квитанцию на `/receipts`.
 4. Только квитанция переводит операцию в `COMPLETED` или `REJECTED`.
-5. При старте `RecoveryService` находит незавершённые `PROCESSING` и повторяет вызов с тем же `Idempotency-Key`.
+5. При старте `RecoveryService` (в `app/services/`) находит незавершённые `PROCESSING` и повторяет вызов с тем же `Idempotency-Key`.
 
 ## Архитектурные решения
 
